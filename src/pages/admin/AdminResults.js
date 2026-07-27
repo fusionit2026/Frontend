@@ -374,6 +374,231 @@ export default function AdminResults() {
     </tr>
   );
 
+  const tableContent = useMemo(() => (
+    <table>
+      <thead>
+        {isLeaderboard ? (
+          <tr>
+            <th>Rank</th>
+            <th>Candidate Name</th>
+            <th>Employee ID</th>
+            <th>Exams Completed</th>
+            <th>Score</th>
+            <th>Overall %</th>
+          </tr>
+        ) : (
+          <tr>
+            <th style={{ width: 48 }}>#</th>
+            <th>Candidate Name</th>
+            <th>Email</th>
+            <th>Exam Name</th>
+            <th>Published</th>
+            <th>Status</th>
+            <th>
+              Percentage&nbsp;(%)
+              {filterParams.sortPct === 'desc' && <SafeIcon name="ArrowDown" size={12} style={{ display: 'inline', marginLeft: 4 }} />}
+              {filterParams.sortPct === 'asc' && <SafeIcon name="ArrowUp" size={12} style={{ display: 'inline', marginLeft: 4 }} />}
+            </th>
+            <th>Overall %</th>
+            <th>Score</th>
+            <th>Correct&nbsp;/&nbsp;Wrong</th>
+            <th>Submitted</th>
+            <th>Actions</th>
+          </tr>
+        )}
+      </thead>
+      <tbody>
+        {loading && records.length === 0
+          ? [...Array(6)].map((_, i) => <React.Fragment key={i}>{SkeletonRow()}</React.Fragment>)
+          : isLeaderboard ? records.map((r, i) => {
+            const globalRank = r.rank || ((filterParams.page - 1) * filterParams.limit + i + 1);
+            return (
+              <motion.tr key={r.employeeId || i} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}>
+                <td><div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  {globalRank <= 3 && <SafeIcon name="Trophy" size={11} color={['#fbbf24', '#94a3b8', '#cd7f32'][globalRank - 1]} />}
+                  <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>#{globalRank}</span>
+                </div></td>
+                <td><div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div className="avatar" style={{ width: 32, height: 32, fontSize: 12, flexShrink: 0 }}>{(r.candidateName || '?')[0].toUpperCase()}</div>
+                  <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-primary)' }}>{r.candidateName || 'Unknown'}</div>
+                </div></td>
+                <td style={{ fontSize: 13 }}>{r.employeeId || '—'}</td>
+                <td style={{ fontSize: 14, fontWeight: 600 }}>{r.examsCompleted || 0}</td>
+                <td style={{ fontSize: 14, fontWeight: 700 }}>
+                    <span style={{ color: 'var(--text-primary)' }}>{r.totalScore || 0}</span>
+                    <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>/{r.totalMarks || 0}</span>
+                </td>
+                <td style={{ fontSize: 15, fontWeight: 800, color: 'var(--primary)' }}>{parseFloat(r.overallPercentage || 0).toFixed(2)}%</td>
+              </motion.tr>
+            );
+          })
+          : records.map((r, i) => {
+            const globalRank = (filterParams.page - 1) * filterParams.limit + i;
+            const emp = r.employee || {};
+            const ass = r.assessment || {};
+            const passed = isPassed(r);
+            const pct = getPct(r);
+            const pctColor = pct >= 80 ? '#10b981' : pct >= 50 ? '#f59e0b' : '#ef4444';
+
+            return (
+              <motion.tr
+                key={r._id ? `${r._id}-${i}` : i}
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.018 }}
+              >
+                <td>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    {(activeCard === 'passed') && globalRank < 3 && (
+                      <SafeIcon name="Trophy" size={11} color={['#fbbf24', '#94a3b8', '#cd7f32'][globalRank]} />
+                    )}
+                    <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>#{globalRank + 1}</span>
+                  </div>
+                </td>
+
+                <td>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div className="avatar" style={{ width: 32, height: 32, fontSize: 12, flexShrink: 0 }}>
+                      {(emp.fullName || '?')[0].toUpperCase()}
+                    </div>
+                    <div>
+                      <div
+                        onClick={() => emp._id && setSelectedUserId(emp._id)}
+                        style={{
+                          fontWeight: 600, fontSize: 13,
+                          color: emp._id ? 'var(--primary)' : 'var(--text-muted)',
+                          cursor: emp._id ? 'pointer' : 'default',
+                          textDecoration: emp._id ? 'underline' : 'none'
+                        }}
+                      >
+                        {emp.fullName || 'Employee Not Found'}
+                      </div>
+                      <div style={{ display: 'flex', gap: 6, marginTop: 2 }}>
+                        {emp.employeeId && (
+                          <span style={{ fontSize: 10, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 2 }}>
+                            <SafeIcon name="Hash" size={9} />{emp.employeeId}
+                          </span>
+                        )}
+                        {emp.department && emp.department !== 'N/A' && (
+                          <span style={{ fontSize: 10, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 2 }}>
+                            <SafeIcon name="Building2" size={9} />{emp.department}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </td>
+
+                <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                  <span title={emp.email || '—'} style={{ display: 'block', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {emp.email || '—'}
+                  </span>
+                </td>
+
+                <td style={{ fontSize: 13, fontWeight: 500 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    <span>{ass.title || '—'}</span>
+                    {r.attemptNumber && (
+                      <span style={{ fontSize: 10, background: 'rgba(99,102,241,0.1)', color: 'var(--primary)', padding: '2px 6px', borderRadius: 4, whiteSpace: 'nowrap' }}>
+                        Attempt {r.attemptNumber}
+                      </span>
+                    )}
+                  </div>
+                </td>
+
+                <td style={{ fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                  {fmtDate(ass.createdAt)}
+                </td>
+
+                <td>
+                  {r.status === 'assigned' ? (
+                    <span className="badge" style={{ background: 'rgba(99,102,241,0.1)', color: 'var(--primary)' }}>ASSIGNED</span>
+                  ) : r.status === 'in-progress' ? (
+                    <span className="badge" style={{ background: 'rgba(245,158,11,0.1)', color: '#f59e0b' }}>IN PROGRESS</span>
+                  ) : (
+                    <span className={`badge ${passed ? 'badge-success' : 'badge-danger'}`}>
+                      {passed ? 'PASS' : 'FAIL'}
+                    </span>
+                  )}
+                </td>
+
+                <td>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ position: 'relative', width: 36, height: 36, flexShrink: 0 }}>
+                      <svg width="36" height="36" style={{ transform: 'rotate(-90deg)' }}>
+                        <circle cx="18" cy="18" r="13" fill="none" stroke="var(--border-light)" strokeWidth="3" />
+                        <circle
+                          cx="18" cy="18" r="13" fill="none"
+                          stroke={pctColor} strokeWidth="3"
+                          strokeDasharray={`${2 * Math.PI * 13}`}
+                          strokeDashoffset={`${2 * Math.PI * 13 * (1 - pct / 100)}`}
+                          strokeLinecap="round"
+                          style={{ transition: 'stroke-dashoffset 0.4s ease' }}
+                        />
+                      </svg>
+                      <div style={{
+                        position: 'absolute', inset: 0,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: 8, fontWeight: 800, color: pctColor
+                      }}>
+                        {pct}
+                      </div>
+                    </div>
+                    <span style={{ fontSize: 15, fontWeight: 800, color: pctColor }}>
+                      {pct}%
+                    </span>
+                  </div>
+                </td>
+
+                <td style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>
+                  {r.overallPercentage != null ? `${r.overallPercentage}%` : '--'}
+                </td>
+
+                <td>
+                  <span style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: 13 }}>
+                    {r.totalScore || 0}
+                  </span>
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>/{r.totalMarks || 0}</span>
+                </td>
+
+                <td style={{ fontSize: 13 }}>
+                  <span style={{ color: '#10b981', fontWeight: 600 }}>{r.correctAnswers || 0}</span>
+                  {' / '}
+                  <span style={{ color: '#ef4444', fontWeight: 600 }}>{r.wrongAnswers || 0}</span>
+                </td>
+
+                <td>
+                  <div style={{ fontSize: 12, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <SafeIcon name="Calendar" size={10} color="var(--text-muted)" />
+                    {fmtDate(r.submittedAt)}
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+                    {fmtTime(r.submittedAt)}
+                  </div>
+                </td>
+
+                <td>
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    <button className="btn btn-ghost btn-sm"
+                      onClick={() => navigate(`/admin/results/${r._id}`)}
+                      title="View Question Analysis">
+                      <SafeIcon name="Eye" size={15} />
+                    </button>
+                    <button className="btn btn-ghost btn-sm"
+                      onClick={() => setDeleteTarget(r._id)}
+                      title="Delete Result">
+                      <SafeIcon name="Trash2" size={15} color="var(--danger)" />
+                    </button>
+                  </div>
+                </td>
+              </motion.tr>
+            );
+          })
+        }
+      </tbody>
+    </table>
+  ), [loading, records, isLeaderboard, filterParams.sortPct, filterParams.page, filterParams.limit, activeCard]);
+
   return (
     <div>
       {/* ── Header ─────────────────────────────────────────────────────── */}
@@ -561,230 +786,7 @@ export default function AdminResults() {
           ) : (
             <motion.div key="table" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
               <div className="table-container table-results">
-                {useMemo(() => (
-                <table>
-                  <thead>
-                    {isLeaderboard ? (
-                      <tr>
-                        <th>Rank</th>
-                        <th>Candidate Name</th>
-                        <th>Employee ID</th>
-                        <th>Exams Completed</th>
-                        <th>Score</th>
-                        <th>Overall %</th>
-                      </tr>
-                    ) : (
-                      <tr>
-                        <th style={{ width: 48 }}>#</th>
-                        <th>Candidate Name</th>
-                        <th>Email</th>
-                        <th>Exam Name</th>
-                        <th>Published</th>
-                        <th>Status</th>
-                        <th>
-                          Percentage&nbsp;(%)
-                          {filterParams.sortPct === 'desc' && <SafeIcon name="ArrowDown" size={12} style={{ display: 'inline', marginLeft: 4 }} />}
-                          {filterParams.sortPct === 'asc' && <SafeIcon name="ArrowUp" size={12} style={{ display: 'inline', marginLeft: 4 }} />}
-                        </th>
-                        <th>Overall %</th>
-                        <th>Score</th>
-                        <th>Correct&nbsp;/&nbsp;Wrong</th>
-                        <th>Submitted</th>
-                        <th>Actions</th>
-                      </tr>
-                    )}
-                  </thead>
-                  <tbody>
-                    {loading && records.length === 0
-                      ? [...Array(6)].map((_, i) => <React.Fragment key={i}>{SkeletonRow()}</React.Fragment>)
-                      : isLeaderboard ? records.map((r, i) => {
-                        const globalRank = r.rank || ((filterParams.page - 1) * filterParams.limit + i + 1);
-                        return (
-                          <motion.tr key={r.employeeId || i} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}>
-                            <td><div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                              {globalRank <= 3 && <SafeIcon name="Trophy" size={11} color={['#fbbf24', '#94a3b8', '#cd7f32'][globalRank - 1]} />}
-                              <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>#{globalRank}</span>
-                            </div></td>
-                            <td><div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                              <div className="avatar" style={{ width: 32, height: 32, fontSize: 12, flexShrink: 0 }}>{(r.candidateName || '?')[0].toUpperCase()}</div>
-                              <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-primary)' }}>{r.candidateName || 'Unknown'}</div>
-                            </div></td>
-                            <td style={{ fontSize: 13 }}>{r.employeeId || '—'}</td>
-                            <td style={{ fontSize: 14, fontWeight: 600 }}>{r.examsCompleted || 0}</td>
-                            <td style={{ fontSize: 14, fontWeight: 700 }}>
-                               <span style={{ color: 'var(--text-primary)' }}>{r.totalScore || 0}</span>
-                               <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>/{r.totalMarks || 0}</span>
-                            </td>
-                            <td style={{ fontSize: 15, fontWeight: 800, color: 'var(--primary)' }}>{parseFloat(r.overallPercentage || 0).toFixed(2)}%</td>
-                          </motion.tr>
-                        );
-                      })
-                      : records.map((r, i) => {
-                        const globalRank = (filterParams.page - 1) * filterParams.limit + i;
-                        const emp = r.employee || {};
-                        const ass = r.assessment || {};
-                        const passed = isPassed(r);
-                        const pct = getPct(r);
-                        const pctColor = pct >= 80 ? '#10b981' : pct >= 50 ? '#f59e0b' : '#ef4444';
-
-                        return (
-                          <motion.tr
-                            key={r._id ? `${r._id}-${i}` : i}
-                            initial={{ opacity: 0, y: 4 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: i * 0.018 }}
-                          >
-                            <td>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                {(activeCard === 'passed') && globalRank < 3 && (
-                                  <SafeIcon name="Trophy" size={11} color={['#fbbf24', '#94a3b8', '#cd7f32'][globalRank]} />
-                                )}
-                                <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>#{globalRank + 1}</span>
-                              </div>
-                            </td>
-
-                            <td>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                <div className="avatar" style={{ width: 32, height: 32, fontSize: 12, flexShrink: 0 }}>
-                                  {(emp.fullName || '?')[0].toUpperCase()}
-                                </div>
-                                <div>
-                                  <div
-                                    onClick={() => emp._id && setSelectedUserId(emp._id)}
-                                    style={{
-                                      fontWeight: 600, fontSize: 13,
-                                      color: emp._id ? 'var(--primary)' : 'var(--text-muted)',
-                                      cursor: emp._id ? 'pointer' : 'default',
-                                      textDecoration: emp._id ? 'underline' : 'none'
-                                    }}
-                                  >
-                                    {emp.fullName || 'Employee Not Found'}
-                                  </div>
-                                  <div style={{ display: 'flex', gap: 6, marginTop: 2 }}>
-                                    {emp.employeeId && (
-                                      <span style={{ fontSize: 10, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 2 }}>
-                                        <SafeIcon name="Hash" size={9} />{emp.employeeId}
-                                      </span>
-                                    )}
-                                    {emp.department && emp.department !== 'N/A' && (
-                                      <span style={{ fontSize: 10, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 2 }}>
-                                        <SafeIcon name="Building2" size={9} />{emp.department}
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            </td>
-
-                            <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                              <span title={emp.email || '—'} style={{ display: 'block', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                {emp.email || '—'}
-                              </span>
-                            </td>
-
-                            <td style={{ fontSize: 13, fontWeight: 500 }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                                <span>{ass.title || '—'}</span>
-                                {r.attemptNumber && (
-                                  <span style={{ fontSize: 10, background: 'rgba(99,102,241,0.1)', color: 'var(--primary)', padding: '2px 6px', borderRadius: 4, whiteSpace: 'nowrap' }}>
-                                    Attempt {r.attemptNumber}
-                                  </span>
-                                )}
-                              </div>
-                            </td>
-
-                            <td style={{ fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                              {fmtDate(ass.createdAt)}
-                            </td>
-
-                            <td>
-                              {r.status === 'assigned' ? (
-                                <span className="badge" style={{ background: 'rgba(99,102,241,0.1)', color: 'var(--primary)' }}>ASSIGNED</span>
-                              ) : r.status === 'in-progress' ? (
-                                <span className="badge" style={{ background: 'rgba(245,158,11,0.1)', color: '#f59e0b' }}>IN PROGRESS</span>
-                              ) : (
-                                <span className={`badge ${passed ? 'badge-success' : 'badge-danger'}`}>
-                                  {passed ? 'PASS' : 'FAIL'}
-                                </span>
-                              )}
-                            </td>
-
-                            <td>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                <div style={{ position: 'relative', width: 36, height: 36, flexShrink: 0 }}>
-                                  <svg width="36" height="36" style={{ transform: 'rotate(-90deg)' }}>
-                                    <circle cx="18" cy="18" r="13" fill="none" stroke="var(--border-light)" strokeWidth="3" />
-                                    <circle
-                                      cx="18" cy="18" r="13" fill="none"
-                                      stroke={pctColor} strokeWidth="3"
-                                      strokeDasharray={`${2 * Math.PI * 13}`}
-                                      strokeDashoffset={`${2 * Math.PI * 13 * (1 - pct / 100)}`}
-                                      strokeLinecap="round"
-                                      style={{ transition: 'stroke-dashoffset 0.4s ease' }}
-                                    />
-                                  </svg>
-                                  <div style={{
-                                    position: 'absolute', inset: 0,
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                    fontSize: 8, fontWeight: 800, color: pctColor
-                                  }}>
-                                    {pct}
-                                  </div>
-                                </div>
-                                <span style={{ fontSize: 15, fontWeight: 800, color: pctColor }}>
-                                  {pct}%
-                                </span>
-                              </div>
-                            </td>
-
-                            <td style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>
-                              {r.overallPercentage != null ? `${r.overallPercentage}%` : '--'}
-                            </td>
-
-                            <td>
-                              <span style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: 13 }}>
-                                {r.totalScore || 0}
-                              </span>
-                              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>/{r.totalMarks || 0}</span>
-                            </td>
-
-                            <td style={{ fontSize: 13 }}>
-                              <span style={{ color: '#10b981', fontWeight: 600 }}>{r.correctAnswers || 0}</span>
-                              {' / '}
-                              <span style={{ color: '#ef4444', fontWeight: 600 }}>{r.wrongAnswers || 0}</span>
-                            </td>
-
-                            <td>
-                              <div style={{ fontSize: 12, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 4 }}>
-                                <SafeIcon name="Calendar" size={10} color="var(--text-muted)" />
-                                {fmtDate(r.submittedAt)}
-                              </div>
-                              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-                                {fmtTime(r.submittedAt)}
-                              </div>
-                            </td>
-
-                            <td>
-                              <div style={{ display: 'flex', gap: 4 }}>
-                                <button className="btn btn-ghost btn-sm"
-                                  onClick={() => navigate(`/admin/results/${r._id}`)}
-                                  title="View Question Analysis">
-                                  <SafeIcon name="Eye" size={15} />
-                                </button>
-                                <button className="btn btn-ghost btn-sm"
-                                  onClick={() => setDeleteTarget(r._id)}
-                                  title="Delete Result">
-                                  <SafeIcon name="Trash2" size={15} color="var(--danger)" />
-                                </button>
-                              </div>
-                            </td>
-                          </motion.tr>
-                        );
-                      })
-                    }
-                  </tbody>
-                </table>
-                ), [loading, records, isLeaderboard, filterParams.sortPct, filterParams.page, filterParams.limit, activeCard])}
+                {tableContent}
               </div>
 
               {/* Pagination */}
