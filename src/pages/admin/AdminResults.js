@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import * as LucideIcons from 'lucide-react';
 import api from '../../services/api';
@@ -30,11 +30,11 @@ const getPct = (r) => {
 };
 
 const fmtDate = (ts) => {
-  if (!ts) return '—';
+  if (!ts) return 'N/A';
   return new Date(ts).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 };
 const fmtTime = (ts) => {
-  if (!ts) return '—';
+  if (!ts) return 'N/A';
   return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 };
 
@@ -58,6 +58,9 @@ function useDebounce(value, delay) {
 
 export default function AdminResults() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const isLeaderboard = searchParams.get('filter') === 'overall';
 
   // ─── Unified filter state ────────────────────────────────────────────────
   const [filterParams, setFilterParams] = useState({
@@ -103,7 +106,7 @@ export default function AdminResults() {
     setFilterParams(prev => ({ ...prev, search: debouncedSearch, page: 1 }));
   }, [debouncedSearch]);
 
-  // ─── Load data from /api/admin/reports ───────────────────────────────────
+  // ─── Load data from /api/admin/reports or leaderboard ───────────────────────────────────
   const load = useCallback(async (params) => {
     setLoading(true);
     try {
@@ -118,16 +121,21 @@ export default function AdminResults() {
         limit: params.limit,
       }).toString();
 
-      const res = await api.get(`/admin/reports?${qs}`);
+      const endpoint = isLeaderboard ? `/admin/leaderboard?${qs}` : `/admin/reports?${qs}`;
+      const res = await api.get(endpoint);
+      
       setSummary(res.data.summary || {});
       setRecords(res.data.records || []);
       setTotalRecords(res.data.totalRecords || 0);
       setTotalPages(res.data.totalPages || 1);
     } catch (err) {
-      toast.error('Failed to load reports');
+      setRecords([]);
+      setTotalRecords(0);
+      setTotalPages(1);
+      toast.error(`Failed to load ${isLeaderboard ? 'leaderboard' : 'reports'}`);
     }
     setLoading(false);
-  }, []);
+  }, [isLeaderboard]);
 
   // Trigger load whenever filterParams changes
   useEffect(() => {
@@ -215,18 +223,113 @@ export default function AdminResults() {
   };
 
   // ─── CSV Export ───────────────────────────────────────────────────────────
-  const exportCSV = () => {
-    const qs = new URLSearchParams({
-      from: filterParams.from,
-      to: filterParams.to,
-      ...(filterParams.status && { status: filterParams.status }),
-      ...(filterParams.assessment && { assessment: filterParams.assessment }),
-      ...(filterParams.search && { search: filterParams.search }),
-      ...(filterParams.sortPct && { sortPct: filterParams.sortPct }),
-    }).toString();
-    // Use base URL from env or fallback
-    const base = process.env.REACT_APP_API_BASE_URL || window.location.origin;
-    window.open(`${base}/api/admin/reports/export?${qs}`, '_blank');
+  const exportCSV = async () => {
+    if (records.length === 0) {
+      toast.error("No data available to export.");
+      return;
+    }
+
+    const toastId = toast.loading("Generating CSV...");
+    try {
+      const qs = new URLSearchParams({
+        from: filterParams.from,
+        to: filterParams.to,
+        ...(filterParams.status && { status: filterParams.status }),
+        ...(filterParams.assessment && { assessment: filterParams.assessment }),
+        ...(filterParams.search && { search: filterParams.search }),
+        ...(filterParams.sortPct && { sortPct: filterParams.sortPct }),
+        page: 1,
+        limit: 10000,
+      }).toString();
+
+      const endpoint = isLeaderboard ? `/admin/leaderboard?${qs}` : `/admin/reports?${qs}`;
+      const res = await api.get(endpoint);
+      const exportRecords = res.data.records || [];
+
+      if (exportRecords.length === 0) {
+        toast.dismiss(toastId);
+        toast.error("No data available to export.");
+        return;
+      }
+
+      let headers = [];
+      let csvRows = [];
+
+      if (isLeaderboard) {
+        headers = ["Rank", "Candidate Name", "Employee ID", "Exams Completed", "Score", "Overall %"];
+        csvRows = [headers.join(',')];
+
+        exportRecords.forEach((r, i) => {
+          const escapeCsv = (str) => `"${String(str || '').replace(/"/g, '""')}"`;
+          csvRows.push([
+            escapeCsv(r.rank || i + 1),
+            escapeCsv(r.candidateName),
+            escapeCsv(r.employeeId),
+            escapeCsv(r.examsCompleted),
+            escapeCsv(`${r.totalScore || 0}/${r.totalMarks || 0}`),
+            escapeCsv(`${parseFloat(r.overallPercentage || 0).toFixed(2)}%`)
+          ].join(','));
+        });
+      } else {
+        headers = [
+          "Candidate Name", "Employee ID", "Email", "Assessment Name", 
+          "Exam Date", "Start Time", "End Time", "Score", 
+          "Percentage", "Overall %", "Result (Pass/Fail)", "Status (Completed/Pending)", "Submission Time"
+        ];
+        csvRows = [headers.join(',')];
+
+      exportRecords.forEach(r => {
+        const emp = r.employee || {};
+        const ass = r.assessment || {};
+        
+        const escapeCsv = (str) => `"${String(str || '').replace(/"/g, '""')}"`;
+        
+        const candidateName = escapeCsv(emp.fullName);
+        const empId = escapeCsv(emp.employeeId);
+        const email = escapeCsv(emp.email);
+        const assName = escapeCsv(ass.title);
+        const examDate = escapeCsv(fmtDate(r.submittedAt || r.startedAt || r.createdAt));
+        const startTime = escapeCsv(fmtTime(r.startedAt || r.startTime));
+        const endTime = escapeCsv(fmtTime(r.submittedAt || r.endTime));
+        const score = escapeCsv(r.totalScore || 0);
+        const pct = escapeCsv(`${getPct(r)}%`);
+        const overallPct = escapeCsv(r.overallPercentage != null ? `${r.overallPercentage}%` : '--');
+        const passed = escapeCsv(isPassed(r) ? "Pass" : "Fail");
+        
+        const isCompleted = ['submitted', 'auto-submitted', 'completed', 'graded'].includes(r.status);
+        const status = escapeCsv(isCompleted ? 'Completed' : 'Pending');
+        const subTime = escapeCsv(fmtTime(r.submittedAt));
+
+        csvRows.push([candidateName, empId, email, assName, examDate, startTime, endTime, score, pct, overallPct, passed, status, subTime].join(','));
+      });
+
+      }
+
+      const csvContent = '\uFEFF' + csvRows.join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      
+      const now = new Date();
+      const pad = (n) => String(n).padStart(2, '0');
+      const dateStr = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+      const timeStr = `${pad(now.getHours())}-${pad(now.getMinutes())}`;
+      
+      const fileName = `assessment_report_${dateStr}_${timeStr}.csv`;
+      
+      const link = document.createElement("a");
+      const url = URL.createObjectURL(blob);
+      link.setAttribute("href", url);
+      link.setAttribute("download", fileName);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      toast.dismiss(toastId);
+      toast.success("Export successful!");
+    } catch (err) {
+      toast.dismiss(toastId);
+      toast.error('Failed to export CSV');
+    }
   };
 
   // ─── Dynamic period label for the Completed card ──────────────────────────
@@ -239,7 +342,7 @@ export default function AdminResults() {
                     : 'Period Completed';
 
   // ─── Cards definition ─────────────────────────────────────────────────────
-  const cards = [
+  let cards = [
     { key: 'uniqueCandidates', iconName: 'Users',          label: 'Total Exam Candidates', subtitle: 'Candidates who took the exam this month', value: summary.uniqueCandidates ?? 0, color: '#8b5cf6', glow: '#8b5cf630', clickable: true  },
     { key: 'publishedExams', iconName: 'BookOpen',       label: 'Total Exams',     value: summary.publishedExams ?? 0,           color: '#f59e0b', glow: '#f59e0b30', clickable: true  },
     { key: 'todayCompleted', iconName: 'CalendarCheck',  label: periodLabel,        value: summary.todayCompleted ?? 0,           color: '#06b6d4', glow: '#06b6d430', clickable: true  },
@@ -247,6 +350,10 @@ export default function AdminResults() {
     { key: 'failed',         iconName: 'XCircle',        label: 'Failed',          value: summary.failed         ?? 0,           color: '#ef4444', glow: '#ef444430', clickable: true  },
     { key: 'avgscore',       iconName: 'TrendingUp',     label: 'Avg Score',       value: `${summary.averageScore ?? 0}%`,       color: '#6366f1', glow: '#6366f130', clickable: true  },
   ];
+
+  if (isLeaderboard) {
+    cards = cards.filter(c => !['todayCompleted', 'passed', 'failed'].includes(c.key));
+  }
 
   let activeLabel = activeCard === 'todayCompleted' ? periodLabel
     : activeCard === 'passed' ? 'Passed only'
@@ -272,7 +379,7 @@ export default function AdminResults() {
       {/* ── Header ─────────────────────────────────────────────────────── */}
       <div className="page-header-row">
         <div className="page-header" style={{ marginBottom: 0 }}>
-          <h1>Reports &amp; Analytics</h1>
+          <h1>{isLeaderboard ? 'Total Score' : 'Reports & Analytics'}</h1>
           <p style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <SafeIcon name="CheckCircle2" size={14} color="#10b981" />
             Live data reflecting latest submissions
@@ -300,6 +407,7 @@ export default function AdminResults() {
             style={{ width: 140, padding: '6px 10px', height: 38 }}
             value={filterParams.from}
             onChange={e => { setFilterParams(p => ({ ...p, from: e.target.value, page: 1 })); setQuickFilter('custom'); }}
+            onClick={e => { try { e.target.showPicker(); } catch (err) {} }}
           />
           <span style={{ color: 'var(--text-secondary)' }}>to</span>
           <input
@@ -308,6 +416,7 @@ export default function AdminResults() {
             style={{ width: 140, padding: '6px 10px', height: 38 }}
             value={filterParams.to}
             onChange={e => { setFilterParams(p => ({ ...p, to: e.target.value, page: 1 })); setQuickFilter('custom'); }}
+            onClick={e => { try { e.target.showPicker(); } catch (err) {} }}
           />
 
           {activeCard && (
@@ -315,6 +424,14 @@ export default function AdminResults() {
               <SafeIcon name="XCircle" size={14} /> Clear Filter
             </button>
           )}
+          <button 
+            className="btn btn-secondary" 
+            onClick={() => load(filterParams)} 
+            style={{ height: 38 }}
+            disabled={loading}
+          >
+            <SafeIcon name="RefreshCw" size={16} style={loading ? { animation: 'spin 1s linear infinite' } : {}} /> Refresh Data
+          </button>
           <button className="btn btn-secondary" onClick={exportCSV} style={{ height: 38 }}>
             <SafeIcon name="Download" size={16} /> Export CSV
           </button>
@@ -444,29 +561,64 @@ export default function AdminResults() {
           ) : (
             <motion.div key="table" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
               <div className="table-container table-results">
+                {useMemo(() => (
                 <table>
                   <thead>
-                    <tr>
-                      <th style={{ width: 48 }}>#</th>
-                      <th>Candidate Name</th>
-                      <th>Email</th>
-                      <th>Exam Name</th>
-                      <th>Published</th>
-                      <th>Status</th>
-                      <th>
-                        Percentage&nbsp;(%)
-                        {filterParams.sortPct === 'desc' && <SafeIcon name="ArrowDown" size={12} style={{ display: 'inline', marginLeft: 4 }} />}
-                        {filterParams.sortPct === 'asc' && <SafeIcon name="ArrowUp" size={12} style={{ display: 'inline', marginLeft: 4 }} />}
-                      </th>
-                      <th>Score</th>
-                      <th>Correct&nbsp;/&nbsp;Wrong</th>
-                      <th>Submitted</th>
-                      <th>Actions</th>
-                    </tr>
+                    {isLeaderboard ? (
+                      <tr>
+                        <th>Rank</th>
+                        <th>Candidate Name</th>
+                        <th>Employee ID</th>
+                        <th>Exams Completed</th>
+                        <th>Score</th>
+                        <th>Overall %</th>
+                      </tr>
+                    ) : (
+                      <tr>
+                        <th style={{ width: 48 }}>#</th>
+                        <th>Candidate Name</th>
+                        <th>Email</th>
+                        <th>Exam Name</th>
+                        <th>Published</th>
+                        <th>Status</th>
+                        <th>
+                          Percentage&nbsp;(%)
+                          {filterParams.sortPct === 'desc' && <SafeIcon name="ArrowDown" size={12} style={{ display: 'inline', marginLeft: 4 }} />}
+                          {filterParams.sortPct === 'asc' && <SafeIcon name="ArrowUp" size={12} style={{ display: 'inline', marginLeft: 4 }} />}
+                        </th>
+                        <th>Overall %</th>
+                        <th>Score</th>
+                        <th>Correct&nbsp;/&nbsp;Wrong</th>
+                        <th>Submitted</th>
+                        <th>Actions</th>
+                      </tr>
+                    )}
                   </thead>
                   <tbody>
                     {loading && records.length === 0
                       ? [...Array(6)].map((_, i) => <React.Fragment key={i}>{SkeletonRow()}</React.Fragment>)
+                      : isLeaderboard ? records.map((r, i) => {
+                        const globalRank = r.rank || ((filterParams.page - 1) * filterParams.limit + i + 1);
+                        return (
+                          <motion.tr key={r.employeeId || i} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}>
+                            <td><div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                              {globalRank <= 3 && <SafeIcon name="Trophy" size={11} color={['#fbbf24', '#94a3b8', '#cd7f32'][globalRank - 1]} />}
+                              <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>#{globalRank}</span>
+                            </div></td>
+                            <td><div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                              <div className="avatar" style={{ width: 32, height: 32, fontSize: 12, flexShrink: 0 }}>{(r.candidateName || '?')[0].toUpperCase()}</div>
+                              <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-primary)' }}>{r.candidateName || 'Unknown'}</div>
+                            </div></td>
+                            <td style={{ fontSize: 13 }}>{r.employeeId || '—'}</td>
+                            <td style={{ fontSize: 14, fontWeight: 600 }}>{r.examsCompleted || 0}</td>
+                            <td style={{ fontSize: 14, fontWeight: 700 }}>
+                               <span style={{ color: 'var(--text-primary)' }}>{r.totalScore || 0}</span>
+                               <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>/{r.totalMarks || 0}</span>
+                            </td>
+                            <td style={{ fontSize: 15, fontWeight: 800, color: 'var(--primary)' }}>{parseFloat(r.overallPercentage || 0).toFixed(2)}%</td>
+                          </motion.tr>
+                        );
+                      })
                       : records.map((r, i) => {
                         const globalRank = (filterParams.page - 1) * filterParams.limit + i;
                         const emp = r.employee || {};
@@ -585,6 +737,10 @@ export default function AdminResults() {
                               </div>
                             </td>
 
+                            <td style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>
+                              {r.overallPercentage != null ? `${r.overallPercentage}%` : '--'}
+                            </td>
+
                             <td>
                               <span style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: 13 }}>
                                 {r.totalScore || 0}
@@ -628,6 +784,7 @@ export default function AdminResults() {
                     }
                   </tbody>
                 </table>
+                ), [loading, records, isLeaderboard, filterParams.sortPct, filterParams.page, filterParams.limit, activeCard])}
               </div>
 
               {/* Pagination */}

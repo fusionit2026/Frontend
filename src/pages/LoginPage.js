@@ -16,7 +16,7 @@ export default function LoginPage() {
     // Early background warm-up fetch to spin up Render free tier container
     const wakeUpBackend = async () => {
       try {
-        const fallbackUrl = "https://caponlinebackend.onrender.com/api/health";
+        const fallbackUrl = "https://backend-9vta.onrender.com/api/health";
         const targetUrl = process.env.REACT_APP_API_URL ? `${process.env.REACT_APP_API_URL.replace(/\/$/, '')}/api/health` : fallbackUrl;
         
         // If server is cold-starting, track the timeout to show warm-up notification

@@ -1,6 +1,6 @@
 import axios from "axios";
 
-const rawUrl = process.env.REACT_APP_API_URL || "https://caponlinebackend.onrender.com";
+const rawUrl = process.env.REACT_APP_API_URL || "https://backend-9vta.onrender.com";
 const API_URL = rawUrl.endsWith('/api') ? rawUrl : `${rawUrl.replace(/\/$/, '')}/api`;
 
 const api = axios.create({

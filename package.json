@@ -57,13 +57,13 @@
   "main": "index.js",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Amarasimha03/Caponlinetest.git"
+    "url": "git+https://github.com/fusionit2026/Frontend.git"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/Amarasimha03/Caponlinetest/issues"
+    "url": "https://github.com/fusionit2026/Frontend/issues"
   },
   "devDependencies": {
     "cross-env": "^10.1.0"

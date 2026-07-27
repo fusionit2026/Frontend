@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback } from 'react';
-import { Outlet, NavLink, useNavigate } from 'react-router-dom';
+import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard, Users, FileText, AlertTriangle, BarChart3,
@@ -15,6 +15,7 @@ const NAV_ITEMS = [
   { path: '/admin/employees', icon: Users, label: 'Employees' },
   { path: '/admin/assessments', icon: FileText, label: 'Assessments' },
   { path: '/admin/results', icon: BarChart3, label: 'Reports' },
+  { path: '/admin/results?filter=overall', icon: BarChart3, label: 'Overall Score' },
   { path: '/admin/violations', icon: AlertTriangle, label: 'Violations' },
   { path: '/admin/monitoring', icon: Monitor, label: 'Live Monitor' },
 ];
@@ -23,6 +24,7 @@ export default function AdminLayout() {
   const { user, logout } = useAuthStore();
   const { init, fetchMonitoringData, destroy } = useMonitoringStore();
   const navigate = useNavigate();
+  const location = useLocation();
   const [collapsed, setCollapsed] = useState(window.innerWidth <= 1440);
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -101,17 +103,25 @@ export default function AdminLayout() {
           <NavLink
             key={path} to={path} end={end}
             onClick={() => setMobileOpen(false)}
-            style={({ isActive }) => ({
-              display: 'flex', alignItems: 'center', gap: 12,
-              padding: collapsed ? '12px' : '11px 16px',
-              borderRadius: 10, marginBottom: 4,
-              color: isActive ? '#fff' : 'var(--text-muted)',
-              background: isActive ? 'var(--gradient-primary)' : 'transparent',
-              textDecoration: 'none', fontSize: 14, fontWeight: isActive ? 600 : 400,
-              transition: 'all 0.2s ease',
-              justifyContent: collapsed ? 'center' : 'flex-start',
-              boxShadow: isActive ? '0 4px 15px rgba(99,102,241,0.3)' : 'none',
-            })}
+            style={({ isActive }) => {
+              let active = isActive;
+              if (path === '/admin/results') {
+                active = isActive && !location.search.includes('filter=overall');
+              } else if (path.includes('filter=overall')) {
+                active = location.pathname === '/admin/results' && location.search.includes('filter=overall');
+              }
+              return {
+                display: 'flex', alignItems: 'center', gap: 12,
+                padding: collapsed ? '12px' : '11px 16px',
+                borderRadius: 10, marginBottom: 4,
+                color: active ? '#fff' : 'var(--text-muted)',
+                background: active ? 'var(--gradient-primary)' : 'transparent',
+                textDecoration: 'none', fontSize: 14, fontWeight: active ? 600 : 400,
+                transition: 'all 0.2s ease',
+                justifyContent: collapsed ? 'center' : 'flex-start',
+                boxShadow: active ? '0 4px 15px rgba(99,102,241,0.3)' : 'none',
+              };
+            }}
           >
             <Icon size={20} />
             {!collapsed && <span>{label}</span>}
